@@ -2,20 +2,23 @@
   "name": "cms-question-formatter",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-react": "^6.0.2",
     "fflate": "^0.8.3",
     "katex": "^0.17.0",
-    "papaparse": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest",
-    "xlsx": "latest"
+    "papaparse": "^5.5.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.0.16",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@xmldom/xmldom": "^0.9.10"
