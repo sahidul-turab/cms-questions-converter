@@ -1,0 +1,1020 @@
+{
+  "meta": {
+    "questions": 159540,
+    "mathQuestions": 36365,
+    "builtAt": "2026-06-16T18:23:09.679Z",
+    "sources": [
+      "Class 6 - All Converted MCQ.csv",
+      "Class 7 - All Converted MCQ.csv",
+      "Class 8 - All Converted MCQ.csv",
+      "Class 9 Science - All Converted MCQ.csv",
+      "Class 11 Science - All Converted MCQ.csv",
+      "Converted Math File from CMS.csv"
+    ]
+  },
+  "numberStyle": {
+    "plain": 32019,
+    "dollar": 6395,
+    "unwrapNumbers": true
+  },
+  "conventions": {
+    "leq": "\\leq",
+    "geq": "\\geq",
+    "neq": "\\neq",
+    "arrow": "\\rightarrow",
+    "frac": "\\frac",
+    "mult": "\\times"
+  },
+  "variantCounts": {
+    "leq": [
+      190,
+      25
+    ],
+    "geq": [
+      60,
+      18
+    ],
+    "neq": [
+      210,
+      25
+    ],
+    "arrow": [
+      1388,
+      688
+    ],
+    "frac": [
+      91567,
+      28
+    ],
+    "mult": [
+      9544,
+      1140
+    ]
+  },
+  "topCommands": [
+    [
+      "\\frac",
+      91567
+    ],
+    [
+      "\\sqrt",
+      26689
+    ],
+    [
+      "\\times",
+      9544
+    ],
+    [
+      "\\circ",
+      7091
+    ],
+    [
+      "\\right",
+      5929
+    ],
+    [
+      "\\left",
+      5928
+    ],
+    [
+      "\\pi",
+      5808
+    ],
+    [
+      "\\hat",
+      4612
+    ],
+    [
+      "\\therefore",
+      4489
+    ],
+    [
+      "\\overrightarrow",
+      4457
+    ],
+    [
+      "\\theta",
+      4327
+    ],
+    [
+      "\\sin",
+      3947
+    ],
+    [
+      "\\begin",
+      3763
+    ],
+    [
+      "\\end",
+      3763
+    ],
+    [
+      "\\cos",
+      3540
+    ],
+    [
+      "\\text",
+      3320
+    ],
+    [
+      "\\textit",
+      3199
+    ],
+    [
+      "\\Rightarrow",
+      3034
+    ],
+    [
+      "\\tan",
+      2249
+    ],
+    [
+      "\\overline",
+      2201
+    ],
+    [
+      "\\int",
+      2163
+    ],
+    [
+      "\\underline",
+      1989
+    ],
+    [
+      "\\alpha",
+      1752
+    ],
+    [
+      "\\mathrm",
+      1481
+    ],
+    [
+      "\\ln",
+      1423
+    ],
+    [
+      "\\rightarrow",
+      1388
+    ],
+    [
+      "\\vec",
+      1298
+    ],
+    [
+      "\\cdot",
+      1140
+    ],
+    [
+      "\\lim",
+      1022
+    ],
+    [
+      "\\omega",
+      997
+    ],
+    [
+      "\\angle",
+      975
+    ],
+    [
+      "\\beta",
+      859
+    ],
+    [
+      "\\Delta",
+      859
+    ],
+    [
+      "\\lambda",
+      845
+    ],
+    [
+      "\\pm",
+      814
+    ],
+    [
+      "\\to",
+      688
+    ],
+    [
+      "\\mu",
+      678
+    ],
+    [
+      "\\dot",
+      671
+    ],
+    [
+      "\\displaystyle",
+      645
+    ],
+    [
+      "\\quad",
+      643
+    ],
+    [
+      "\\mathbb",
+      616
+    ],
+    [
+      "\\log",
+      604
+    ],
+    [
+      "\\it",
+      558
+    ],
+    [
+      "\\sec",
+      539
+    ],
+    [
+      "\\cot",
+      471
+    ],
+    [
+      "\\propto",
+      394
+    ],
+    [
+      "\\triangle",
+      326
+    ],
+    [
+      "\\bar",
+      321
+    ],
+    [
+      "\\infty",
+      296
+    ],
+    [
+      "\\prime",
+      294
+    ],
+    [
+      "\\degree",
+      273
+    ],
+    [
+      "\\in",
+      241
+    ],
+    [
+      "\\space",
+      237
+    ],
+    [
+      "\\ldots",
+      235
+    ],
+    [
+      "\\underset",
+      232
+    ],
+    [
+      "\\bullet",
+      226
+    ],
+    [
+      "\\gamma",
+      223
+    ],
+    [
+      "\\xrightarrow",
+      216
+    ],
+    [
+      "\\because",
+      213
+    ],
+    [
+      "\\neq",
+      210
+    ]
+  ],
+  "commands": {
+    "\\frac": 91567,
+    "\\sqrt": 26689,
+    "\\times": 9544,
+    "\\circ": 7091,
+    "\\right": 5929,
+    "\\left": 5928,
+    "\\pi": 5808,
+    "\\hat": 4612,
+    "\\therefore": 4489,
+    "\\overrightarrow": 4457,
+    "\\theta": 4327,
+    "\\sin": 3947,
+    "\\begin": 3763,
+    "\\end": 3763,
+    "\\cos": 3540,
+    "\\text": 3320,
+    "\\textit": 3199,
+    "\\Rightarrow": 3034,
+    "\\tan": 2249,
+    "\\overline": 2201,
+    "\\int": 2163,
+    "\\underline": 1989,
+    "\\alpha": 1752,
+    "\\mathrm": 1481,
+    "\\ln": 1423,
+    "\\rightarrow": 1388,
+    "\\vec": 1298,
+    "\\cdot": 1140,
+    "\\lim": 1022,
+    "\\omega": 997,
+    "\\angle": 975,
+    "\\beta": 859,
+    "\\Delta": 859,
+    "\\lambda": 845,
+    "\\pm": 814,
+    "\\to": 688,
+    "\\mu": 678,
+    "\\dot": 671,
+    "\\displaystyle": 645,
+    "\\quad": 643,
+    "\\mathbb": 616,
+    "\\log": 604,
+    "\\it": 558,
+    "\\sec": 539,
+    "\\cot": 471,
+    "\\propto": 394,
+    "\\triangle": 326,
+    "\\bar": 321,
+    "\\infty": 296,
+    "\\prime": 294,
+    "\\degree": 273,
+    "\\in": 241,
+    "\\space": 237,
+    "\\ldots": 235,
+    "\\underset": 232,
+    "\\bullet": 226,
+    "\\gamma": 223,
+    "\\xrightarrow": 216,
+    "\\because": 213,
+    "\\neq": 210,
+    "\\delta": 208,
+    "\\equiv": 197,
+    "\\leq": 190,
+    "\\longrightarrow": 189,
+    "\\rho": 189,
+    "\\sigma": 169,
+    "\\epsilon": 165,
+    "\\vert": 162,
+    "\\tau": 132,
+    "\\dots": 131,
+    "\\oplus": 127,
+    "\\rightleftharpoons": 123,
+    "\\overset": 120,
+    "\\operatorname": 107,
+    "\\binom": 99,
+    "\\eta": 94,
+    "\\widehat": 91,
+    "\\cap": 82,
+    "\\cdots": 78,
+    "\\sum": 73,
+    "\\phi": 69,
+    "\\approx": 66,
+    "\\div": 65,
+    "\\sim": 63,
+    "\\varphi": 63,
+    "\\nabla": 63,
+    "\\Omega": 62,
+    "\\gt": 62,
+    "\\geq": 60,
+    "\\cup": 51,
+    "\\Sigma": 51,
+    "\\mathring": 45,
+    "\\lt": 44,
+    "\\n": 44,
+    "\\partial": 42,
+    "\\setminus": 40,
+    "\\parallel": 35,
+    "\\B": 33,
+    "\\imath": 31,
+    "\\subset": 28,
+    "\\dfrac": 28,
+    "\\stackrel": 27,
+    "\\perp": 26,
+    "\\jmath": 26,
+    "\\le": 25,
+    "\\Longrightarrow": 25,
+    "\\ne": 25,
+    "\\nu": 23,
+    "\\cosec": 23,
+    "\\hline": 21,
+    "\\ddot": 20,
+    "\\bigtriangleup": 20,
+    "\\notin": 19,
+    "\\ge": 18,
+    "\\osec": 17,
+    "\\implies": 17,
+    "\\a": 17,
+    "\\lbrack": 17,
+    "\\rbrack": 15,
+    "\\ell": 14,
+    "\\hspace": 14,
+    "\\mathbf": 14,
+    "\\A": 13,
+    "\\b": 13,
+    "\\v": 13,
+    "\\r": 13,
+    "\\emptyset": 12,
+    "\\underbrace": 12,
+    "\\arg": 12,
+    "\\qquad": 11,
+    "\\underrightarrow": 11,
+    "\\bot": 10,
+    "\\l": 10,
+    "\\max": 10,
+    "\\x": 10,
+    "\\y": 10,
+    "\\mid": 9,
+    "\\wedge": 8,
+    "\\oint": 8,
+    "\\zeta": 8,
+    "\\uparrow": 7,
+    "\\downarrow": 7,
+    "\\Q": 6,
+    "\\varepsilon": 6,
+    "\\Lambda": 6,
+    "\\ns": 6,
+    "\\q": 6,
+    "\\i": 6,
+    "\\vdots": 6,
+    "\\N": 5,
+    "\\choose": 5,
+    "\\z": 5,
+    "\\psi": 4,
+    "\\lbrace": 4,
+    "\\rbrace": 4,
+    "\\rm": 4,
+    "\\land": 4,
+    "\\min": 4,
+    "\\top": 4,
+    "\\c": 4,
+    "\\sinx": 4,
+    "\\p": 4,
+    "\\neg": 3,
+    "\\cong": 3,
+    "\\varnothing": 3,
+    "\\rule": 3,
+    "\\csc": 3,
+    "\\mp": 3,
+    "\\triangledown": 3,
+    "\\timesn": 3,
+    "\\e": 3,
+    "\\det": 3,
+    "\\ast": 2,
+    "\\Z": 2,
+    "\\doteq": 2,
+    "\\thereforen": 2,
+    "\\chi": 2,
+    "\\subseteqB": 2,
+    "\\subseteqA": 2,
+    "\\gg": 2,
+    "\\vee": 2,
+    "\\leftrightarrow": 2,
+    "\\lvert": 2,
+    "\\forall": 2,
+    "\\Gamma": 2,
+    "\\iii": 1,
+    "\\R": 1,
+    "\\P": 1,
+    "\\lea": 1,
+    "\\gea": 1,
+    "\\sub": 1,
+    "\\subB": 1,
+    "\\inz": 1,
+    "\\notinB": 1,
+    "\\notinA": 1,
+    "\\timesr": 1,
+    "\\timesE": 1,
+    "\\timesI": 1,
+    "\\thereforeABCE": 1,
+    "\\thereforeAD": 1,
+    "\\ta": 1,
+    "\\ng": 1,
+    "\\ent": 1,
+    "\\angleACB": 1,
+    "\\timestan": 1,
+    "\\divide": 1,
+    "\\boldsymbol": 1,
+    "\\sup": 1,
+    "\\phix": 1,
+    "\\odot": 1,
+    "\\leqslant": 1,
+    "\\cal": 1,
+    "\\thicksim": 1,
+    "\\triangleH": 1,
+    "\\frav": 1
+  },
+  "subjects": {
+    "Science": {
+      "count": 4476,
+      "plain": 161,
+      "dollar": 6
+    },
+    "Bangladesh And Global Studies": {
+      "count": 2631,
+      "plain": 12,
+      "dollar": 0
+    },
+    "Bangla 2nd Paper": {
+      "count": 161,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Bangla 1st Paper": {
+      "count": 160,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Mathematics": {
+      "count": 10813,
+      "plain": 8608,
+      "dollar": 753
+    },
+    "ICT": {
+      "count": 11026,
+      "plain": 2087,
+      "dollar": 98
+    },
+    "English 1st Paper": {
+      "count": 80,
+      "plain": 4,
+      "dollar": 0
+    },
+    "English 2nd Paper": {
+      "count": 370,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Bangla": {
+      "count": 420,
+      "plain": 0,
+      "dollar": 0
+    },
+    "English": {
+      "count": 421,
+      "plain": 8,
+      "dollar": 0
+    },
+    "Bangla 2nd": {
+      "count": 7158,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Bangla 1st": {
+      "count": 13841,
+      "plain": 4,
+      "dollar": 0
+    },
+    "English 2nd": {
+      "count": 4301,
+      "plain": 0,
+      "dollar": 0
+    },
+    "English 1st": {
+      "count": 2823,
+      "plain": 188,
+      "dollar": 0
+    },
+    "History And Social Science (NC)": {
+      "count": 500,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Life And Livelihood (NC)": {
+      "count": 140,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Science (NC)": {
+      "count": 470,
+      "plain": 59,
+      "dollar": 4
+    },
+    "Wellbeing (NC)": {
+      "count": 140,
+      "plain": 0,
+      "dollar": 0
+    },
+    "English (NC)": {
+      "count": 210,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Bangla (NC)": {
+      "count": 280,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Digital Technology (NC)": {
+      "count": 240,
+      "plain": 39,
+      "dollar": 0
+    },
+    "Mathematics (NC)": {
+      "count": 410,
+      "plain": 455,
+      "dollar": 69
+    },
+    "Half Yearly Summative Assessment": {
+      "count": 200,
+      "plain": 84,
+      "dollar": 7
+    },
+    "English 2nd (Old)": {
+      "count": 60,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Geography And Environment": {
+      "count": 651,
+      "plain": 2,
+      "dollar": 0
+    },
+    "Economics": {
+      "count": 432,
+      "plain": 1,
+      "dollar": 0
+    },
+    "History Of Bangladesh And World Civilization": {
+      "count": 576,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Civics And Citizenship": {
+      "count": 464,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Hindu Religion And Moral Education": {
+      "count": 22,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Higher Maths": {
+      "count": 5386,
+      "plain": 3154,
+      "dollar": 1048
+    },
+    "Islam And Moral Education": {
+      "count": 837,
+      "plain": 4,
+      "dollar": 0
+    },
+    "Biology": {
+      "count": 6165,
+      "plain": 98,
+      "dollar": 0
+    },
+    "Chemistry": {
+      "count": 6403,
+      "plain": 1795,
+      "dollar": 20
+    },
+    "Bangladesh And Global Studies (2025)": {
+      "count": 2658,
+      "plain": 4,
+      "dollar": 4
+    },
+    "Physics": {
+      "count": 6309,
+      "plain": 736,
+      "dollar": 146
+    },
+    "English 1st (2025)": {
+      "count": 985,
+      "plain": 114,
+      "dollar": 0
+    },
+    "Christian Religion And Moral Education": {
+      "count": 6,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Buddhist Religion And Moral Education": {
+      "count": 3,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College Mathematics": {
+      "count": 255,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College Chemistry": {
+      "count": 180,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College Biology": {
+      "count": 120,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College Bangla": {
+      "count": 90,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College English": {
+      "count": 105,
+      "plain": 0,
+      "dollar": 0
+    },
+    "College Physics": {
+      "count": 180,
+      "plain": 4,
+      "dollar": 0
+    },
+    "Advanced ICT": {
+      "count": 30,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Islamic History And Culture 2nd Paper": {
+      "count": 629,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Logic 2nd Paper": {
+      "count": 313,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Civic & Good Governance 1st Paper": {
+      "count": 568,
+      "plain": 0,
+      "dollar": 0
+    },
+    "HSC Foundation": {
+      "count": 40,
+      "plain": 4,
+      "dollar": 0
+    },
+    "Geography 2nd Paper": {
+      "count": 668,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Economics 2nd Paper": {
+      "count": 778,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Geography 1st Paper": {
+      "count": 715,
+      "plain": 1,
+      "dollar": 0
+    },
+    "Social Work 2nd Paper": {
+      "count": 370,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Shopner College": {
+      "count": 10,
+      "plain": 0,
+      "dollar": 0
+    },
+    "History 2nd Paper": {
+      "count": 853,
+      "plain": 6,
+      "dollar": 0
+    },
+    "Agriculture Education 2nd Paper": {
+      "count": 190,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Biology 2nd": {
+      "count": 5058,
+      "plain": 66,
+      "dollar": 0
+    },
+    "Biology 1st": {
+      "count": 4950,
+      "plain": 75,
+      "dollar": 0
+    },
+    "Orientation And Guideline": {
+      "count": 10,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Economics 1st Paper": {
+      "count": 835,
+      "plain": 27,
+      "dollar": 4
+    },
+    "Physics 2nd": {
+      "count": 4611,
+      "plain": 603,
+      "dollar": 74
+    },
+    "Chemistry 2nd": {
+      "count": 4818,
+      "plain": 1828,
+      "dollar": 55
+    },
+    "Islamic History And Culture 1st Paper": {
+      "count": 613,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Sociology 2nd Paper": {
+      "count": 327,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Chemistry 1st": {
+      "count": 5328,
+      "plain": 1586,
+      "dollar": 191
+    },
+    "Statistics 2nd Paper": {
+      "count": 255,
+      "plain": 293,
+      "dollar": 37
+    },
+    "Physics 1st": {
+      "count": 5372,
+      "plain": 643,
+      "dollar": 123
+    },
+    "Statistics 1st Paper": {
+      "count": 205,
+      "plain": 122,
+      "dollar": 0
+    },
+    "Psychology 2nd Paper": {
+      "count": 222,
+      "plain": 0,
+      "dollar": 0
+    },
+    "History 1st Paper": {
+      "count": 713,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Chemistry Admission": {
+      "count": 777,
+      "plain": 374,
+      "dollar": 27
+    },
+    "Physics Admission": {
+      "count": 925,
+      "plain": 289,
+      "dollar": 55
+    },
+    "Math Admission": {
+      "count": 947,
+      "plain": 452,
+      "dollar": 313
+    },
+    "Logic 1st Paper": {
+      "count": 448,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Higher Math 2nd": {
+      "count": 4420,
+      "plain": 1816,
+      "dollar": 657
+    },
+    "Civic & Good Governance 2nd Paper": {
+      "count": 725,
+      "plain": 8,
+      "dollar": 0
+    },
+    "Higher Math 1st": {
+      "count": 11317,
+      "plain": 5134,
+      "dollar": 2458
+    },
+    "Psychology 1st Paper": {
+      "count": 341,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Biology Admission": {
+      "count": 289,
+      "plain": 16,
+      "dollar": 0
+    },
+    "Medical Chemistry": {
+      "count": 485,
+      "plain": 110,
+      "dollar": 5
+    },
+    "English Admission": {
+      "count": 804,
+      "plain": 0,
+      "dollar": 0
+    },
+    "GK Admission": {
+      "count": 325,
+      "plain": 20,
+      "dollar": 0
+    },
+    "Medical Physics": {
+      "count": 453,
+      "plain": 88,
+      "dollar": 8
+    },
+    "Medical Biology": {
+      "count": 796,
+      "plain": 24,
+      "dollar": 0
+    },
+    "Social Work 1st Paper": {
+      "count": 305,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Sociology 1st Paper": {
+      "count": 358,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Agriculture Education 1st Paper": {
+      "count": 170,
+      "plain": 0,
+      "dollar": 0
+    },
+    "English 1st Paper - HSC'26": {
+      "count": 730,
+      "plain": 60,
+      "dollar": 0
+    },
+    "Bangla Admission": {
+      "count": 175,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Geography 1st Paper_Before_2025": {
+      "count": 10,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Test Class Twelve Subject": {
+      "count": 4,
+      "plain": 1,
+      "dollar": 3
+    },
+    "ICT Admission": {
+      "count": 4,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Chemistry 2nd Paper Short Syllabus": {
+      "count": 280,
+      "plain": 190,
+      "dollar": 18
+    },
+    "Physics 1st Short Syllabus": {
+      "count": 250,
+      "plain": 23,
+      "dollar": 11
+    },
+    "Biology 1st Paper Short Syllabus": {
+      "count": 260,
+      "plain": 8,
+      "dollar": 0
+    },
+    "Higher Math 2nd Short Syllabus": {
+      "count": 259,
+      "plain": 107,
+      "dollar": 68
+    },
+    "Biology 2nd Short Syllabus": {
+      "count": 290,
+      "plain": 0,
+      "dollar": 0
+    },
+    "Higher Math 1st Short Syllabus": {
+      "count": 340,
+      "plain": 145,
+      "dollar": 91
+    },
+    "Physics 2nd Short Syllabus": {
+      "count": 290,
+      "plain": 51,
+      "dollar": 2
+    },
+    "Chemistry 1st Short Syllabus": {
+      "count": 220,
+      "plain": 84,
+      "dollar": 4
+    },
+    "Quarter Final Exam": {
+      "count": 904,
+      "plain": 144,
+      "dollar": 36
+    }
+  }
+}

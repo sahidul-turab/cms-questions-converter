@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# Vercel
+.vercel
+
+# scratch output from tools/dump.mjs
+tools/_dump/
+
+# Large CMS training EXPORTS (raw inputs) and tool OUTPUT csvs.
+# These are NOT the trained data — they are distilled offline into
+# src/knowledge.json (which IS committed). Re-train with tools/train.mjs.
+*.csv
+# keep the tiny schema reference
+!Sample Structure for CMS Auto Input.csv
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
