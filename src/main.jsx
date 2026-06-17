@@ -5,9 +5,10 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import './style.css';
 
-import { docxToText } from './docx.js';
+import { docxToContent, IMG_PLACEHOLDER_PREFIX } from './docx.js';
 import { applyConventions } from './omml.js';
-import { parseRaw } from './parse.js';
+import { isUploadConfigured, uploadImages } from './upload.js';
+import { parseRaw, bnToEn } from './parse.js';
 import { toCmsRow, buildCorpus, attachNearest, MATH_FIELDS } from './style.js';
 import { listSubjects, getDataset, putDataset, deleteDataset } from './db.js';
 import knowledge from './knowledge.json';
@@ -83,6 +84,102 @@ function taxTopics(classLabel, group, subjectName, chapterName) {
   return c ? c.topics : [];
 }
 
+// ---- Document metadata detection & mismatch checks ----
+
+// Bengali ordinals used in paper/chapter headers.
+const BN_ORDINALS = [
+  ['প্রথম','1'],['দ্বিতীয়','2'],['তৃতীয়','3'],['চতুর্থ','4'],
+  ['পঞ্চম','5'],['ষষ্ঠ','6'],['সপ্তম','7'],['অষ্টম','8'],
+  ['নবম','9'],['দশম','10'],
+];
+
+// Scan the raw text header (before questions) for paper-number and subject hints.
+function detectDocMeta(rawText) {
+  const headerText = (rawText || '').split('\n').slice(0, 20).map(l => l.trim()).filter(Boolean).join(' ');
+  let paper = '';
+  for (const [bn, num] of BN_ORDINALS) {
+    if (headerText.includes(bn + ' পত্র')) { paper = num; break; }
+  }
+  if (!paper) {
+    const m = headerText.match(/\b([123])(st|nd|rd|th)\s*paper\b/i);
+    if (m) paper = m[1];
+  }
+  return { paper };
+}
+
+// Extract paper number (1/2/3) from any string (subject name, doc header, etc.).
+function paperNum(s) {
+  const l = String(s || '').toLowerCase();
+  for (const [bn, num] of BN_ORDINALS) {
+    if (l.includes(bn + ' পত্র') || l.includes(bn + 'পত্র')) return num;
+  }
+  if (l.includes('প্রথম') || l.includes('1st') || l.includes('first')) return '1';
+  if (l.includes('দ্বিতীয়') || l.includes('2nd') || l.includes('second')) return '2';
+  if (l.includes('তৃতীয়') || l.includes('3rd') || l.includes('third')) return '3';
+  return '';
+}
+
+// Compute mismatch warnings comparing doc metadata + parsed rows against cfg dropdowns.
+function computeMismatches(docMeta, built, cfg, allTaxTopics) {
+  const warnings = [];
+
+  // Paper number: doc header vs. selected subject name.
+  if (docMeta.paper) {
+    const selPaper = paperNum(cfg.subject);
+    if (selPaper && selPaper !== docMeta.paper) {
+      const ordLabel = (n) => n === '1' ? '1st' : n === '2' ? '2nd' : n === '3' ? '3rd' : n + 'th';
+      warnings.push({
+        level: 'error', field: 'subject',
+        msg: `Paper mismatch — document is ${ordLabel(docMeta.paper)} Paper but "${cfg.subject}" (${ordLabel(selPaper)} Paper) is selected.`,
+      });
+    }
+  }
+
+  // Chapter: per-question chapters vs. selected cfg.chapter.
+  const docChapters = [...new Set(built.map(r => r['Chapter']).filter(Boolean))];
+  if (docChapters.length > 0 && cfg.chapter) {
+    if (!docChapters.includes(cfg.chapter.trim())) {
+      warnings.push({
+        level: 'error', field: 'chapter',
+        msg: `Chapter mismatch — "${cfg.chapter}" is selected but document has: ${docChapters.slice(0, 5).join(', ')}${docChapters.length > 5 ? '…' : ''}.`,
+      });
+    }
+  }
+  if (docChapters.length > 1) {
+    warnings.push({
+      level: 'info', field: 'chapter',
+      msg: `Document spans ${docChapters.length} chapters — per-question chapters will be used in the export, not the global chapter setting.`,
+    });
+  }
+
+  // Topic match rate: if a subject is selected but topics barely match, flag it.
+  if (cfg.subject && allTaxTopics.length > 0 && built.length > 0) {
+    const docTopics = built.flatMap(r => r._docTopics || []).filter(t => t && t.name);
+    if (docTopics.length > 0) {
+      const hits = docTopics.filter(dt => {
+        const s = matchTopic(dt, allTaxTopics).status;
+        return s === 'matched' || s === 'suggested';
+      }).length;
+      const rate = hits / docTopics.length;
+      if (rate < 0.35) {
+        warnings.push({
+          level: 'warn', field: 'subject',
+          msg: `Only ${Math.round(rate * 100)}% of doc topics matched "${cfg.subject}" — verify the subject is correct.`,
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+// Resolve a raw chapter number (Bengali or ASCII) to the taxonomy chapter object.
+function taxChapterByNo(classLabel, group, subjectName, rawNo) {
+  if (!rawNo) return null;
+  const n = bnToEn(String(rawNo)).trim();
+  return taxChapters(classLabel, group, subjectName).find((c) => String(c.no).trim() === n) || null;
+}
+
 // Every topic of the picked subject (across all its chapters), de-duplicated —
 // the candidate set the per-question doc topics are matched against.
 function taxAllTopics(classLabel, group, subjectName) {
@@ -99,7 +196,7 @@ function taxAllTopics(classLabel, group, subjectName) {
   return out;
 }
 
-const normTopic = (s) => String(s || '').toLowerCase().replace(/[।,;|()\-–—.]/g, ' ').replace(/\s+/g, ' ').trim();
+const normTopic = (s) => String(s || '').normalize('NFC').toLowerCase().replace(/[।,;|()\-–—.]/g, ' ').replace(/\s+/g, ' ').trim();
 function topicTokens(s) { return new Set(normTopic(s).split(' ').filter(Boolean)); }
 function topicSim(a, b) {
   const A = topicTokens(a), B = topicTokens(b);
@@ -133,11 +230,16 @@ function matchTopic(docTopic, taxTopics) {
 // Cascading Class → Group → Subject → Chapter → Topic dropdowns. Writes the
 // exact CMS names into cfg (output stays names-only) so the upload file matches
 // the live CMS taxonomy with no guessing.
-function TaxonomyPicker({ cfg, setCfg }) {
+function TaxonomyPicker({ cfg, setCfg, warnings }) {
   const needGroup = taxNeedsGroup(cfg.class);
   const subjects = taxSubjects(cfg.class, cfg.group);
   const chapters = taxChapters(cfg.class, cfg.group, cfg.subject);
   const opt = (val, label) => <option key={val} value={val}>{label}</option>;
+  const flag = (field) => {
+    const w = (warnings || []).find(w => w.field === field);
+    if (!w) return null;
+    return <span className={'taxflag taxflag-' + w.level} title={w.msg}>{w.level === 'error' ? '⚠' : '!'}</span>;
+  };
   return (
     <>
       <label>class
@@ -155,14 +257,14 @@ function TaxonomyPicker({ cfg, setCfg }) {
             : [<option key="" value="">— not used —</option>]}
         </select>
       </label>
-      <label>subject
+      <label>subject {flag('subject')}
         <select value={cfg.subject || ''}
           onChange={(e) => setCfg({ ...cfg, subject: e.target.value, chapter: '', topic: '' })}>
           <option value="">Select subject…</option>
           {subjects.map((s) => opt(s.name, s.name.trim() + (s.name_bn ? '  ·  ' + s.name_bn : '')))}
         </select>
       </label>
-      <label>chapter
+      <label>chapter {flag('chapter')}
         <select value={cfg.chapter || ''} disabled={!cfg.subject}
           onChange={(e) => setCfg({ ...cfg, chapter: e.target.value })}>
           <option value="">Select chapter…</option>
@@ -170,6 +272,120 @@ function TaxonomyPicker({ cfg, setCfg }) {
         </select>
       </label>
     </>
+  );
+}
+
+// Searchable combobox for the taxonomy topic list.
+// Two-state design: closed = clickable display div; open = real text input.
+// This avoids controlled-value flickering that hides typed text.
+function SearchableSelect({ value, options, onChange, placeholder }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Auto-focus the search input when opened.
+  useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false); setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const selectedLabel = (options.find((o) => o.value === value) || {}).label || value || '';
+  const filtered = search
+    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div className="topic-search-wrap" ref={wrapRef}>
+      {open ? (
+        <input
+          ref={inputRef}
+          className="topic-search-input"
+          value={search}
+          placeholder="Type to search…"
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpen(false); setSearch(''); }
+            if (e.key === 'Enter' && filtered.length > 0) {
+              onChange(filtered[0].value); setOpen(false); setSearch('');
+            }
+          }}
+        />
+      ) : (
+        <div
+          className={'topic-display' + (value ? '' : ' topic-placeholder')}
+          onClick={() => { setSearch(''); setOpen(true); }}
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setSearch(''); setOpen(true); } }}
+        >
+          {value ? selectedLabel : (placeholder || '— select topic —')}
+          <span className="topic-chevron">▾</span>
+        </div>
+      )}
+      {open && (
+        <div className="topic-dropdown">
+          {filtered.map((o) => (
+            <div
+              key={o.value || '_empty'}
+              className={'topic-option' + (o.value === value ? ' active' : '')}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(o.value); setOpen(false); setSearch('');
+              }}
+            >
+              {o.label}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="topic-option" style={{ color: 'var(--ink-400)', cursor: 'default' }}>No matches</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-question chapter selector. Shows a searchable dropdown of taxonomy chapters
+// for the chosen subject, with a ✓/✎ status badge identical to TopicCell.
+function ChapterCell({ row, taxChapterList, onChange }) {
+  const val = row['Chapter'] || '';
+  const inTax = taxChapterList.length > 0 && !!val && taxChapterList.some((c) => c.name === val);
+  const badge = inTax ? 'ok' : 'doc';
+  const tipText = inTax
+    ? 'Exact chapter match ✓'
+    : taxChapterList.length === 0
+    ? 'No taxonomy loaded — verify name matches CMS'
+    : val
+    ? 'Chapter not in taxonomy — will fail upload'
+    : 'No chapter set';
+  return (
+    <div className="chaptercell">
+      <div className="topicrow">
+        <span className={'tbadge ' + badge} title={tipText}>
+          {badge === 'ok' ? '✓' : '✎'}
+        </span>
+        <SearchableSelect
+          value={val}
+          placeholder="— select chapter —"
+          options={taxChapterList.map((c) => ({ value: c.name, label: (c.no ? c.no + ' ' : '') + c.name }))}
+          onChange={onChange}
+        />
+      </div>
+      {badge === 'doc' && taxChapterList.length > 0 && val && (
+        <div className="thint">⚠ Not in taxonomy — will fail upload</div>
+      )}
+    </div>
   );
 }
 
@@ -185,46 +401,108 @@ function TopicCell({ row, taxTopics, onChange }) {
   const setSlot = (i, v) => { const next = chosen.slice(); next[i] = v; onChange(next); };
   const addSlot = () => onChange([...chosen, '']);
   const delSlot = (i) => onChange(chosen.filter((_, j) => j !== i));
-  const anySuggested = hasTax && docTopics.some((dt) => matchTopic(dt, taxTopics).status === 'suggested');
+
+  let warnCount = 0, errCount = 0;
+  const slots = chosen.map((val, i) => {
+    const dt = docTopics[i] || { no: '', name: val };
+    const docMatch = hasTax ? matchTopic(dt, taxTopics) : { status: 'none', name: '' };
+    const valInTax = hasTax && !!val && taxTopics.some((t) => t.name === val);
+    const isAutoSuggested = valInTax && docMatch.status === 'suggested' && val === docMatch.name;
+    const badge = valInTax ? (isAutoSuggested ? 'warn' : 'ok') : 'doc';
+    if (badge === 'warn') warnCount++;
+    if (badge === 'doc' && hasTax && val) errCount++;
+    const tipText = badge === 'ok'
+      ? 'Exact CMS match ✓'
+      : badge === 'warn'
+      ? 'Auto-matched to closest CMS name — verify it is correct before exporting'
+      : hasTax
+      ? 'Not found in taxonomy — this text will fail CMS upload, search and select the correct name'
+      : 'No taxonomy loaded — verify name matches CMS exactly';
+    return { val, dt, badge, tipText };
+  });
 
   return (
     <div className="topiccell">
-      {chosen.map((val, i) => {
-        const dt = docTopics[i] || { no: '', name: val };
-        const status = hasTax ? matchTopic(dt, taxTopics).status : 'none';
-        const badge = status === 'matched' ? 'ok' : status === 'suggested' ? 'warn' : 'doc';
-        return (
-          <div className="topicrow" key={i}>
-            <span className={'tbadge ' + badge} title={status === 'matched' ? 'matched in taxonomy' : status === 'suggested' ? 'suggested — confirm' : 'from doc'}>
-              {badge === 'ok' ? '✓' : badge === 'warn' ? '~' : '✎'}
-            </span>
-            {hasTax ? (
-              <select value={val} onChange={(e) => setSlot(i, e.target.value)}>
-                {!val && <option value="">— select topic —</option>}
-                {dt.name && !taxTopics.some((t) => t.name === dt.name) &&
-                  <option value={dt.name}>{(dt.no ? dt.no + ' ' : '') + dt.name + '  · from doc'}</option>}
-                {taxTopics.map((t) => (
-                  <option key={t.no + '|' + t.name} value={t.name}>{(t.no ? t.no + ' ' : '') + t.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input value={val} onChange={(e) => setSlot(i, e.target.value)} placeholder="topic from doc" />
-            )}
-            {chosen.length > 1 && <button type="button" className="tdel" title="remove topic" onClick={() => delSlot(i)}>×</button>}
-          </div>
-        );
-      })}
+      {slots.map(({ val, dt, badge, tipText }, i) => (
+        <div className="topicrow" key={i}>
+          <span className={'tbadge ' + badge} title={tipText}>
+            {badge === 'ok' ? '✓' : badge === 'warn' ? '~' : '✎'}
+          </span>
+          {hasTax ? (
+            <SearchableSelect
+              value={val}
+              placeholder="— select topic —"
+              options={taxTopics.map((t) => ({ value: t.name, label: (t.no ? t.no + ' ' : '') + t.name }))}
+              onChange={(v) => setSlot(i, v)}
+            />
+          ) : (
+            <input value={val} onChange={(e) => setSlot(i, e.target.value)} placeholder="topic from doc" />
+          )}
+          {chosen.length > 1 && (
+            <button type="button" className="tdel" title="remove topic" onClick={() => delSlot(i)}>×</button>
+          )}
+        </div>
+      ))}
       <button type="button" className="tadd" onClick={addSlot}>+ topic</button>
-      {anySuggested && <div className="thint">~ suggested from taxonomy — confirm or pick another</div>}
+      {(warnCount > 0 || errCount > 0) && (
+        <div className="thint">
+          {warnCount > 0 && `~ ${warnCount} auto-matched CMS name — hover badge to confirm`}
+          {warnCount > 0 && errCount > 0 && ' · '}
+          {errCount > 0 && `⚠ ${errCount} not found in taxonomy — search and select`}
+        </div>
+      )}
     </div>
   );
 }
 
 const GEN_FIELDS = ['Question Title', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Solution', 'Has Math Equation'];
-const PREVIEW_COLS = [...GEN_FIELDS, 'Difficulty Level', 'Topic(s)'];
+const PREVIEW_COLS = [...GEN_FIELDS, 'Difficulty Level', 'Chapter', 'Topic(s)'];
 
-// Bare option value for Auto Input (strip the leading "A. " / "B) " etc.).
-function stripOptionPrefix(v) { return String(v || '').replace(/^\s*[A-D]\s*[.)]\s*/, ''); }
+// Fields that can carry an inline image placeholder from the DOCX.
+const IMG_FIELDS = ['Question Title', 'Option A', 'Option B', 'Option C', 'Option D', 'Solution'];
+// Matches the basename inside <img src="shikho-img:imageN.png" …/> (stops at the
+// closing quote, whitespace, or paren).
+const PLACEHOLDER_RE = new RegExp(IMG_PLACEHOLDER_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^)\\s"]+)', 'g');
+
+// Collect every image basename still referenced by a placeholder across rows.
+function neededImages(rows) {
+  const set = new Set();
+  for (const r of rows) {
+    for (const f of IMG_FIELDS) {
+      const s = r[f];
+      if (typeof s !== 'string' || s.indexOf(IMG_PLACEHOLDER_PREFIX) === -1) continue;
+      let m; PLACEHOLDER_RE.lastIndex = 0;
+      while ((m = PLACEHOLDER_RE.exec(s))) set.add(m[1]);
+    }
+  }
+  return set;
+}
+
+// Rewrite shikho-img:<basename> -> hosted URL in every image-bearing field.
+function applyImageUrls(rows, urlByBasename) {
+  return rows.map((r) => {
+    let changed = false;
+    const next = { ...r };
+    for (const f of IMG_FIELDS) {
+      const s = next[f];
+      if (typeof s !== 'string' || s.indexOf(IMG_PLACEHOLDER_PREFIX) === -1) continue;
+      const rep = s.replace(PLACEHOLDER_RE, (m, base) => urlByBasename[base] || m);
+      if (rep !== s) { next[f] = rep; changed = true; }
+    }
+    return changed ? next : r;
+  });
+}
+
+// Auto Input options must carry their "A. " / "B. " … label — the CMS upload
+// expects each option self-numbered, and dropping it forces the team to re-add
+// every prefix by hand. Strip whatever letter prefix the reviewer left (Latin or
+// Bengali, "A." or "A)") and re-apply the canonical "<L>. <value>", so a manual
+// edit that changed or removed the prefix still exports correctly. Only the
+// options get numbered — question title and the rest stay label-free.
+function ensureOptionPrefix(letter, v) {
+  const body = String(v || '').replace(/^\s*[A-Eক-ঙ]\s*[.)]\s*/, '').trim();
+  return body ? letter + '. ' + body : '';
+}
 
 
 function csvEscape(v) {
@@ -244,7 +522,7 @@ function MathText({ value }) {
   const html = useMemo(() => {
     const s = String(value || '');
     if (!s) return '';
-    const parts = s.split(/(\$[^$]*\$)/g);
+    const parts = s.split(/(\$[^$]*\$|<img\b[^>]*>)/gi);
     return parts.map((p) => {
       if (/^\$[^$]*\$$/.test(p)) {
         try {
@@ -253,7 +531,14 @@ function MathText({ value }) {
           return '<span class="mathbad">' + p.replace(/</g, '&lt;') + '</span>';
         }
       }
-      return p.replace(/</g, '&lt;');
+      if (/^<img\b/i.test(p)) {
+        const src = (p.match(/\bsrc="([^"]*)"/i) || [])[1] || '';
+        if (src.indexOf(IMG_PLACEHOLDER_PREFIX) === 0) {
+          return '<span class="imgchip">🖼 ' + src.slice(IMG_PLACEHOLDER_PREFIX.length).replace(/</g, '&lt;') + ' · pending upload</span>';
+        }
+        return p; // generated <img> tag — render as-is (CSS caps the preview size)
+      }
+      return p.replace(/</g, '&lt;').replace(/\n/g, '<br>');
     }).join('');
   }, [value]);
   return <div className="mathprev" dangerouslySetInnerHTML={{ __html: html }} />;
@@ -265,7 +550,9 @@ function App() {
   const [corrections, setCorrections] = useState([]);
   const [style, setStyle] = useState({ unwrapNumbers: knowledge.numberStyle.unwrapNumbers, sampleSize: 0, plainNumberOptions: 0, dollarNumberOptions: 0 });
   const [raw, setRaw] = useState('');
+  const [images, setImages] = useState({}); // { basename: { bytes, contentType } } from the DOCX
   const [rows, setRows] = useState([]);
+  const [docWarnings, setDocWarnings] = useState([]);
   const [busy, setBusy] = useState('');
   const [showMath, setShowMath] = useState(true);
   const [cfg, setCfg] = useState({ ...AUTO_INPUT_DEFAULTS });
@@ -287,7 +574,7 @@ function App() {
     const ns = numberStyleFor(name);
     setStyle({ ...ns, unwrapNumbers: ds?.unwrapNumbers ?? ns.unwrapNumbers });
     setSubject(name);
-    setRows([]); setRaw('');
+    setRows([]); setRaw(''); setDocWarnings([]);
     try { localStorage.setItem('cms_last_subject', name); } catch { /* ignore */ }
   }, []);
 
@@ -336,8 +623,9 @@ function App() {
     setBusy('Extracting math from DOCX…');
     try {
       const buf = await file.arrayBuffer();
-      const text = docxToText(buf); // native DOMParser in the browser
+      const { text, images: imgs } = docxToContent(buf); // native DOMParser in the browser
       setRaw(text);
+      setImages(imgs || {});
     } catch (e) {
       alert('DOCX read failed: ' + e.message);
     }
@@ -348,25 +636,77 @@ function App() {
     () => taxAllTopics(cfg.class, cfg.group, cfg.subject),
     [cfg.class, cfg.group, cfg.subject]
   );
+  const subjectTaxChapters = useMemo(
+    () => taxChapters(cfg.class, cfg.group, cfg.subject),
+    [cfg.class, cfg.group, cfg.subject]
+  );
 
-  const format = useCallback(() => {
+  // When the user picks a new chapter from the ChapterCell dropdown, re-resolve
+  // the row's doc topics against the new chapter's topic list.
+  const onChapterChange = (i, r, newChapter) => {
+    const chTopics = taxTopics(cfg.class, cfg.group, cfg.subject, newChapter);
+    const docTopics = r._docTopics || [];
+    const reResolved = chTopics.length
+      ? docTopics.map((dt) => matchTopic(dt, chTopics).name).filter(Boolean)
+      : [];
+    setRows((rs) => rs.map((row, idx) => idx === i
+      ? { ...row, 'Chapter': newChapter, _topics: reResolved }
+      : row
+    ));
+  };
+
+  const format = useCallback(async () => {
     const taxTopics = taxAllTopics(cfg.class, cfg.group, cfg.subject);
     const parsed = parseRaw(raw);
-    const built = parsed.map((q) => {
+    let built = parsed.map((q) => {
       const base = toCmsRow(q, style);
       const docTopics = (q.topics && q.topics.length) ? q.topics
         : (q.topic ? [{ no: '', name: q.topic }] : []);
       const resolved = docTopics.map((dt) => matchTopic(dt, taxTopics).name);
+      let resolvedChapter = '';
+      if (q.chapter) {
+        const ch = taxChapterByNo(cfg.class, cfg.group, cfg.subject, q.chapter);
+        resolvedChapter = ch ? ch.name : bnToEn(String(q.chapter)).trim();
+      }
       const withMeta = {
         'Difficulty Level': q.difficulty || '',
+        'Chapter': resolvedChapter,
         'Topic(s)': q.topic || '',
         _docTopics: docTopics,
         _topics: resolved,
       };
       return attachNearest({ ...base, ...withMeta }, corpus);
     });
+
+    // Auto-upload inline images and rewrite placeholders to hosted CMS URLs,
+    // replacing the manual "save as picture → upload → copy url → paste" flow.
+    const needed = neededImages(built);
+    const uploadWarnings = [];
+    if (needed.size) {
+      if (!isUploadConfigured()) {
+        uploadWarnings.push({
+          level: 'warn', field: 'image',
+          msg: `${needed.size} image(s) found in the doc but image upload is not configured — set the upload preset in src/upload.js, or paste the URLs manually. Placeholders are kept so nothing is lost.`,
+        });
+      } else {
+        try {
+          const urlMap = await uploadImages(needed, images, (done, total) =>
+            setBusy(`Uploading images ${done}/${total}…`));
+          built = applyImageUrls(built, urlMap);
+          const missed = neededImages(built).size;
+          if (missed) uploadWarnings.push({ level: 'warn', field: 'image', msg: `${missed} image(s) could not be uploaded — paste their URLs manually.` });
+        } catch (e) {
+          uploadWarnings.push({ level: 'error', field: 'image', msg: 'Image upload failed: ' + (e && e.message ? e.message : e) });
+        } finally {
+          setBusy('');
+        }
+      }
+    }
+
     setRows(built);
-  }, [raw, style, corpus, cfg.class, cfg.group, cfg.subject]);
+    const docMeta = detectDocMeta(raw);
+    setDocWarnings([...uploadWarnings, ...computeMismatches(docMeta, built, cfg, taxTopics)]);
+  }, [raw, images, style, corpus, cfg.class, cfg.group, cfg.subject]);
 
   const updateCell = (i, col, val) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [col]: val } : r)));
   const setTopics = (i, arr) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, _topics: arr } : r)));
@@ -380,15 +720,15 @@ function App() {
     class: cfg.class,
     group: cfg.group,
     subject: cfg.subject,
-    chapter: cfg.chapter,
+    chapter: ((r['Chapter'] && r['Chapter'].trim()) ? r['Chapter'].trim() : cfg.chapter).normalize('NFC'),
     topic: (r._topics && r._topics.length)
-      ? r._topics.map((s) => String(s || '').trim()).filter(Boolean).join('; ')
-      : (r['Topic(s)'] || ''),
+      ? r._topics.map((s) => String(s || '').normalize('NFC').trim()).filter(Boolean).join('; ')
+      : String(r['Topic(s)'] || '').normalize('NFC'),
     title: r['Question Title'] || '',
-    option_a: stripOptionPrefix(r['Option A']),
-    option_b: stripOptionPrefix(r['Option B']),
-    option_c: stripOptionPrefix(r['Option C']),
-    option_d: stripOptionPrefix(r['Option D']),
+    option_a: ensureOptionPrefix('A', r['Option A']),
+    option_b: ensureOptionPrefix('B', r['Option B']),
+    option_c: ensureOptionPrefix('C', r['Option C']),
+    option_d: ensureOptionPrefix('D', r['Option D']),
     correct_option: r['Correct Option'] || '',
     solution: r['Solution'] || '',
     difficulty_level: r['Difficulty Level'] || cfg.difficulty_level,
@@ -463,7 +803,7 @@ function App() {
         <p className="sub">Class → Subject → Chapter are picked from the live CMS taxonomy ({taxonomy.source}, {TAX_ENUMS_PRESENT.join('/') || 'none'}) so the upload file matches CMS exactly. <b>Topic is read per-question from the uploaded doc</b> and matched to the taxonomy in the preview table (step 4) — confirm or repick per row. The rest fill every column except the converted question/options/solution. <code>difficulty_level</code> here is only a fallback; the value parsed from each question wins.</p>
         <div className="grid">
           {CLASS_OPTIONS.length
-            ? <TaxonomyPicker cfg={cfg} setCfg={setCfg} />
+            ? <TaxonomyPicker cfg={cfg} setCfg={setCfg} warnings={docWarnings} />
             : TAXONOMY_FIELDS.map((k) => (
                 <label key={k}>{k}<input value={cfg[k] || ''} onChange={(e) => setCfg({ ...cfg, [k]: e.target.value })} /></label>
               ))}
@@ -486,6 +826,16 @@ function App() {
         <h2>4 · Preview, edit &amp; export <span className="pill">{rows.length} questions</span>
           {dupCount > 0 && <span className="pill warn">{dupCount} possible duplicate(s)</span>}
         </h2>
+        {docWarnings.length > 0 && (
+          <div className="docwarnings">
+            {docWarnings.map((w, i) => (
+              <div key={i} className={'docwarn docwarn-' + w.level}>
+                <span className="docwarn-icon">{w.level === 'error' ? '⚠' : w.level === 'warn' ? '!' : 'i'}</span>
+                {w.msg}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="actions">
           <button onClick={saveAsTraining} disabled={!rows.length}>Save corrections as training</button>
           <button onClick={exportCSV} disabled={!rows.length}>Download CSV</button>
@@ -498,27 +848,42 @@ function App() {
               <tr><th>#</th>{PREVIEW_COLS.map((c) => <th key={c}>{c}</th>)}<th>Closest saved fix</th></tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className={r._duplicate === 'Yes' ? 'dup' : ''}>
-                  <td className="rownum">{i + 1}</td>
-                  {PREVIEW_COLS.map((c) => (
-                    <td key={c}>
-                      {c === 'Topic(s)' ? (
-                        <TopicCell row={r} taxTopics={subjectTaxTopics} onChange={(arr) => setTopics(i, arr)} />
-                      ) : (
-                        <>
-                          <textarea value={r[c] || ''} onChange={(e) => updateCell(i, c, e.target.value)} />
-                          {showMath && MATH_FIELDS.includes(c) && r[c] && <MathText value={r[c]} />}
-                        </>
-                      )}
+              {rows.map((r, i) => {
+                // Scope topic list to the row's chapter if it's confirmed in taxonomy,
+                // otherwise fall back to all subject topics so the user can still search.
+                const rowChapter = r['Chapter'] || cfg.chapter;
+                const chapterConfirmed = subjectTaxChapters.some((c) => c.name === rowChapter);
+                const rowTopics = chapterConfirmed
+                  ? taxTopics(cfg.class, cfg.group, cfg.subject, rowChapter)
+                  : subjectTaxTopics;
+                return (
+                  <tr key={i} className={r._duplicate === 'Yes' ? 'dup' : ''}>
+                    <td className="rownum">{i + 1}</td>
+                    {PREVIEW_COLS.map((c) => (
+                      <td key={c}>
+                        {c === 'Chapter' ? (
+                          <ChapterCell
+                            row={r}
+                            taxChapterList={subjectTaxChapters}
+                            onChange={(v) => onChapterChange(i, r, v)}
+                          />
+                        ) : c === 'Topic(s)' ? (
+                          <TopicCell row={r} taxTopics={rowTopics} onChange={(arr) => setTopics(i, arr)} />
+                        ) : (
+                          <>
+                            <textarea value={r[c] || ''} onChange={(e) => updateCell(i, c, e.target.value)} />
+                            {showMath && MATH_FIELDS.includes(c) && r[c] && <MathText value={r[c]} />}
+                          </>
+                        )}
+                      </td>
+                    ))}
+                    <td className="matchcell">
+                      <div className="score">{r._matchScore ? `score ${r._matchScore} (${r._matchSource})` : 'no match'}</div>
+                      {r._matchTitle && <div className="mtitle">{r._matchTitle}</div>}
                     </td>
-                  ))}
-                  <td className="matchcell">
-                    <div className="score">{r._matchScore ? `score ${r._matchScore} (${r._matchSource})` : 'no match'}</div>
-                    {r._matchTitle && <div className="mtitle">{r._matchTitle}</div>}
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

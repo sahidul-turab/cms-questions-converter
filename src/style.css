@@ -121,12 +121,38 @@ tr.dup td{ background:var(--sunrise-50); }
   border-radius:var(--r-sm); font-size:15px; line-height:1.7; direction:ltr; color:var(--ink-900);
 }
 .mathprev .mathbad{ color:var(--coral); background:var(--coral-50); padding:0 4px; border-radius:4px; }
+.mathprev img{ display:inline-block; max-width:180px !important; max-height:140px !important; width:auto !important; height:auto !important; vertical-align:middle; margin:2px 0; border:1px solid var(--indigo-100); border-radius:4px; }
+.mathprev .imgchip{ display:inline-block; font-size:12px; color:var(--ink-700); background:var(--indigo-50,#eef); border:1px dashed var(--indigo-100); border-radius:4px; padding:1px 6px; }
 .matchcell{ min-width:220px; max-width:320px; }
 .matchcell .score{ font-size:11px; color:var(--ink-400); margin-bottom:4px; font-weight:600; }
 .matchcell .mtitle{ font-size:12px; color:var(--ink-700); max-height:90px; overflow:auto; }
 
 /* ---- Footer note ---- */
 .note{ border-left:5px solid var(--sunrise); background:#fff; line-height:1.7; color:var(--ink-700); }
+
+/* ---- Dropdown mismatch flags (inline next to label text) ---- */
+.taxflag{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:17px; height:17px; border-radius:50%; font-size:11px; font-weight:700;
+  margin-left:5px; vertical-align:middle; cursor:help;
+}
+.taxflag-error{ background:var(--coral); color:#fff; }
+.taxflag-warn{ background:var(--sunrise); color:#fff; }
+.taxflag-info{ background:var(--indigo-300); color:#fff; }
+
+/* ---- Document mismatch warning banner (step 4) ---- */
+.docwarnings{ display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.docwarn{
+  display:flex; align-items:flex-start; gap:10px;
+  padding:10px 14px; border-radius:var(--r-md); font-size:13px; line-height:1.45;
+}
+.docwarn-icon{ flex:0 0 auto; font-size:15px; margin-top:1px; }
+.docwarn-error{ background:var(--coral-50); color:#8b1c2e; border:1px solid #f5c0ca; }
+.docwarn-warn{ background:var(--sunrise-50); color:#7a4f00; border:1px solid #f0d080; }
+.docwarn-info{ background:var(--indigo-50); color:var(--indigo-700); border:1px solid var(--indigo-100); }
+
+/* ---- Per-question chapter selector ---- */
+.chaptercell{ min-width:200px; max-width:280px; display:flex; flex-direction:column; gap:4px; }
 
 /* ---- Per-question topic cell (doc-derived, taxonomy-matched) ---- */
 .topiccell{ min-width:240px; max-width:320px; display:flex; flex-direction:column; gap:6px; }
@@ -140,3 +166,39 @@ tr.dup td{ background:var(--sunrise-50); }
 .tdel{ flex:0 0 auto; background:var(--coral-50); color:var(--coral); border:0; border-radius:var(--r-sm); padding:2px 7px; cursor:pointer; font-weight:700; }
 .tadd{ align-self:flex-start; background:var(--indigo-50); color:var(--indigo-700); border:0; border-radius:var(--r-pill); padding:3px 10px; cursor:pointer; font-size:12px; }
 .thint{ font-size:11px; color:var(--sunrise-700, #9a6b00); }
+
+/* ---- Searchable topic combobox ---- */
+.topic-search-wrap{ position:relative; flex:1; min-width:0; }
+
+/* Closed state: looks like a select */
+.topic-display{
+  display:flex; align-items:center; justify-content:space-between; gap:4px;
+  padding:5px 6px; border:1px solid var(--ink-50); border-radius:var(--r-sm);
+  background:var(--ink-50); font-size:12px; font-family:inherit; color:var(--ink-900);
+  cursor:pointer; min-height:27px; line-height:1.3; word-break:break-word;
+  transition:border-color var(--t-fast);
+}
+.topic-display:hover{ border-color:var(--ink-300); }
+.topic-display:focus{ outline:none; border-color:var(--indigo); box-shadow:0 0 0 3px var(--indigo-100); }
+.topic-display.topic-placeholder{ color:var(--ink-400); }
+.topic-chevron{ flex:0 0 auto; font-size:10px; color:var(--ink-400); margin-left:2px; }
+
+/* Open state: text input */
+.topic-search-input{
+  width:100%; margin-top:0; padding:5px 6px;
+  border:1.5px solid var(--indigo); border-radius:var(--r-sm);
+  background:#fff; font-size:12px; font-family:inherit; color:var(--ink-900);
+  outline:none; box-shadow:0 0 0 3px var(--indigo-100);
+}
+
+.topic-dropdown{
+  position:absolute; z-index:200; top:calc(100% + 2px); left:0; right:0;
+  background:#fff; border:1.5px solid var(--indigo);
+  border-radius:var(--r-sm); box-shadow:var(--sh-md);
+  max-height:200px; overflow-y:auto;
+}
+.topic-option{
+  padding:5px 9px; font-size:12px; font-family:inherit; cursor:pointer;
+  color:var(--ink-700); white-space:normal; line-height:1.35;
+}
+.topic-option:hover,.topic-option.active{ background:var(--indigo-50); color:var(--indigo); }

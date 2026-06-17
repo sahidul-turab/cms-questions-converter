@@ -61,7 +61,8 @@ function stripDollarsAroundNumbers(s) {
 }
 
 function normalizeMathField(s, opts) {
-  let x = String(s || '').replace(/\s+/g, ' ').trim();
+  // Collapse inline spaces/tabs but keep \n\n paragraph breaks (list-item questions).
+  let x = String(s || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   if (opts.unwrapNumbers) x = stripDollarsAroundNumbers(x);
   // Tidy spacing ONLY inside each $...$ segment ("$ x $" -> "$x$"); never
   // touch the spaces between math and surrounding Bangla text.
@@ -88,10 +89,12 @@ export function toCmsRow(q, style) {
   };
   const answerValue = norm(q.answerValue || (q.correct && optVal[q.correct]) || '');
 
-  // CMS solution = <answer value> ব্যাখ্যা: <explanation>
+  // CMS solution = <answer value> \n ব্যাখ্যা: <explanation>
+  // The correct answer goes on the first line, then a line break, then the
+  // explanation — matching how solutions are written in the CMS.
   const explanation = norm(q.explanation);
   let solution = answerValue;
-  if (explanation) solution = (solution ? solution + ' ' : '') + 'ব্যাখ্যা: ' + explanation;
+  if (explanation) solution = (solution ? solution + '\n' : '') + 'ব্যাখ্যা: ' + explanation;
 
   const fields = {
     'Question Title': norm(q.title),

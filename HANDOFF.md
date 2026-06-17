@@ -3,7 +3,8 @@
 **Project owner:** sahidul.turab@shikho.com (Shikho Knowledge Team)
 **Working directory:** `c:\Users\Shikho\Downloads\cms-question-formatter v2\cms-question-formatter`
 **Dev server:** `http://localhost:5173` (run `npm run dev` to start)
-**Last trained:** 2026-06-16
+**Last trained:** 2026-06-17 (159,540 questions, 101 subjects)
+**Last updated:** 2026-06-17
 
 ---
 
@@ -90,9 +91,17 @@ cms-question-formatter/
 │   ├── db.js            # IndexedDB per-subject persistence (cfg + corrections)
 │   ├── main.jsx         # React UI
 │   ├── style.css        # Shikho brand CSS
-│   └── knowledge.json   # Distilled corpus (aggregates only, ~7 KB)
+│   ├── knowledge.json   # Distilled corpus (aggregates only, ~7 KB)
+│   └── taxonomy.json    # Merged Class→Subject→Chapter→Topic snapshot from live CMS
 ├── tools/
-│   └── train.mjs        # Offline cumulative trainer
+│   ├── train.mjs                  # Offline cumulative trainer (corpus → knowledge.json)
+│   ├── taxonomy-exporter.user.js  # Tampermonkey userscript: walks cms.shikho.com → taxonomy.json
+│   ├── merge-taxonomy.mjs         # Merges Taxonomy/*.json snapshots → src/taxonomy.json
+│   ├── dump.mjs                   # Dev: extracts .docx → plain text (for inspection)
+│   ├── check.mjs                  # Dev: parses all sample files, reports quality per file
+│   └── inspect.mjs                # Dev: dumps one file's parsed questions to stdout
+├── Taxonomy/                      # Raw per-class snapshots from taxonomy-exporter
+│   └── C6 - taxonomy.json         # (add C7, C8, SSC, HSC snapshots here as exported)
 ├── public/
 │   └── shikho-logo.png  # Brand logo (white BG knocked out)
 ├── index.html           # Poppins + Hind Siliguri fonts from Google Fonts
@@ -198,7 +207,7 @@ parsed questions. Re-run `node tools/check.mjs` after any parser change.
 - Normalizes all text fields (trim, `$num$` → `num` if `unwrapNumbers`)
 - Trims spacing inside `$...$` only, never touches spaces between math and Bangla text (critical — earlier a bug stripped Bangla spacing)
 - `Solution` column = `<answer value> ব্যাখ্যা: <explanation>`
-- Options prefixed with `A. `, `B. `, etc. in the preview (stripped again in `buildAutoRow()` for export)
+- Options prefixed with `A. `, `B. `, etc. in the preview **and kept on export** — `buildAutoRow()` calls `ensureOptionPrefix()` so every exported option is self-numbered (`A. <value>`). Only the four option columns get numbered; the question title and all other fields stay label-free.
 
 **`hasMath(fields)`** — returns `'Yes'`/`'No'` based on whether any field contains `$...$` or a LaTeX command.
 
@@ -243,7 +252,7 @@ Stores per subject: `{ subject, cfg, corrections, unwrapNumbers, updatedAt }`
 2. `loadSubject(name)` → loads cfg + corrections from IndexedDB for that subject
 3. `loadDocx(file)` → `file.arrayBuffer()` → `docxToText()` → sets `raw`
 4. `format()` → `parseRaw(raw)` → `toCmsRow()` → `attachNearest()` → `setRows()`
-5. `buildAutoRow(r)` → maps preview row to 21-column Auto-Input schema; strips `A. ` prefix from options
+5. `buildAutoRow(r)` → maps preview row to 21-column Auto-Input schema; `ensureOptionPrefix()` guarantees each option keeps its `A. `/`B. `/`C. `/`D. ` label on export (question title and other fields stay un-numbered)
 6. `exportCSV()` / `exportXLSX()` → downloads file in CMS-ready format
 7. `saveAsTraining()` → pushes current rows to `corrections` → triggers IndexedDB persist
 
@@ -311,6 +320,7 @@ After training, always run `npm run build` to bundle the updated `knowledge.json
 | `ক)/খ)/গ)/ঘ)` option files fully unparsed (e.g. BGS) | Only `[A-D]` markers recognized | Bengali option letters mapped to A–D in `parse.js` |
 | Topic lines became junk question rows | Section number `3.1` matched the question-start split | `(?![০-৯0-9])` lookahead + tab-required topic rule |
 | Difficulty/topic tags leaked into the title | Only whole-bracket lines were treated as meta | `stripInlineMeta()` pulls inline `[E]`/`[Topic:…]`/trailing `EASY` from stem & answer lines |
+| Exported options lost their `A. B. C. D.` labels (team re-added by hand) | `buildAutoRow()` stripped the option prefix on export | `ensureOptionPrefix()` re-applies `A. `/`B. `/… on export — **options stay numbered, title and the rest stay un-numbered** (`main.jsx`) |
 
 ---
 
@@ -350,6 +360,75 @@ against the taxonomy, because the same chapter's questions span many topics.
    (`tools/merge-taxonomy.mjs`; later snapshots win per class enum).
 4. `npm run build`. Currently only **C6** is exported; C7+ are in progress.
 
+---
+
+### `tools/taxonomy-exporter.user.js` — Tampermonkey userscript
+
+**Purpose:** Walk the live CMS API (Class → Subject → Chapter → Topic) and download a single `taxonomy.json` file that the formatter uses for its cascading dropdowns. No token is stored in the script — it is captured live from the user's own authenticated session.
+
+**Install:** Tampermonkey (Chrome/Firefox) → `+` → paste the file → Save. Navigate to `https://cms.shikho.com/*` (any page) and the panel appears bottom-right.
+
+**How token capture works (three layers):**
+1. **Fetch patch** — patches `unsafeWindow.fetch` (the real page window, not the sandbox) to intercept GraphQL calls and grab the `Authorization: Bearer …` header
+2. **XHR patch** — patches `XMLHttpRequest.prototype.setRequestHeader` similarly for any XHR-based GraphQL calls
+3. **Storage fallback** — if no network call has been seen yet, scans `localStorage` + `sessionStorage` for a bare JWT regex (`eyJ…`) — works even before the first API call fires
+
+The script uses `@grant GM_xmlhttpRequest` with `@connect api.shikho.com` to bypass CORS and call the API from the userscript sandbox.
+
+**GraphQL API:** `https://api.shikho.com/graphql`
+
+**Class enum mapping:**
+| UI label | API enum | Groups |
+|---|---|---|
+| Class 6 | `C6` | (none — no group split) |
+| Class 7 | `C7` | (none) |
+| Class 8 | `C8` | (none) |
+| Class 9 / Class 10 | `SSC` | Science, Humanities, Business Studies |
+| Class 11 / Class 12 | `HSC` | Science, Humanities, Business Studies |
+
+**Queries used:**
+- `subjects(class, group)` → `{ display, display_bn, code }`
+- `chapters(subject_code, page)` → paginated, 500/page, `{ id, name, no, active }`
+- `topics(chapter_id, page, size)` → paginated, 200/page, `{ id, name, no }`
+
+**Rate limiting:** 120 ms sleep between chapter-page requests; 100 ms between chapters. For a large class (SSC/HSC × 3 groups × many subjects) this can take several minutes — the log panel shows progress.
+
+**Output schema (`taxonomy.json`):**
+```json
+{
+  "source": "cms.shikho.com",
+  "generatedAt": "ISO timestamp",
+  "classLabelToEnum": { "Class 6": "C6", "Class 9": "SSC", ... },
+  "groupsByEnum": { "C6": [""], "SSC": ["Science", "Humanities", "Business Studies"], ... },
+  "enums": {
+    "C6": {
+      "": {
+        "subjects": [
+          {
+            "name": "Mathematics",
+            "name_bn": "গণিত",
+            "code": "subject-code-string",
+            "chapters": [
+              {
+                "id": "chapter-id",
+                "no": 1,
+                "name": "Chapter name",
+                "active": true,
+                "topics": [
+                  { "id": "topic-id", "no": 1, "name": "Topic name" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+**To export a new class:** In the Tampermonkey panel on `cms.shikho.com`, tick the desired class checkboxes → *Build & download taxonomy.json* → rename the downloaded file (e.g. `SSC - taxonomy.json`) → drop it in `Taxonomy/` → run `npm run taxonomy && npm run build`.
+
 **Topic extraction (`parse.js`):** each question exposes `topics: [{no, name}]`
 (plus a name-only `topic` string). Multiple topics in one tag (`9.2 X, 9.5 Y`)
 are split on a comma/`;` **followed by a section number**, so commas *inside* one
@@ -388,9 +467,18 @@ npm install
 npm run dev
 # → http://localhost:5173
 
-# Train on a new CMS export
+# Train on a new CMS export CSV (append, never overwrites)
 node tools/train.mjs "Class 10 - All Converted MCQ.csv"
 npm run build
+
+# Rebuild taxonomy after dropping a new snapshot into Taxonomy/
+npm run taxonomy   # runs tools/merge-taxonomy.mjs → src/taxonomy.json
+npm run build
+
+# Dev tools (parser inspection)
+node tools/dump.mjs "questions.docx"          # docx → text to stdout
+node tools/inspect.mjs "questions.docx"       # parsed question objects
+node tools/check.mjs                          # quality report on all sample files
 
 # Build for production
 npm run build
@@ -399,3 +487,4 @@ npm run build
 **Tech stack:** React 18, Vite, fflate, KaTeX, xlsx, PapaParse, IndexedDB
 **Node version:** whatever is installed (no specific constraint found)
 **No backend** — fully client-side, runs offline after `npm run dev`
+**Taxonomy script:** Tampermonkey (browser extension), runs on `cms.shikho.com`
