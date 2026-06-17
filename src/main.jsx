@@ -11,6 +11,7 @@ import { parseRaw } from './parse.js';
 import { toCmsRow, buildCorpus, attachNearest, MATH_FIELDS } from './style.js';
 import { listSubjects, getDataset, putDataset, deleteDataset } from './db.js';
 import knowledge from './knowledge.json';
+import taxonomy from './taxonomy.json';
 
 // The app is pre-trained: apply CMS conventions learned offline from the full
 // corpus (tools/train.mjs) to every conversion. No reference upload needed.
@@ -39,12 +40,185 @@ function numberStyleFor(subject) {
 const AUTO_INPUT_COLUMNS = ['class', 'group', 'subject', 'chapter', 'topic', 'title', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_option', 'solution', 'difficulty_level', 'has_math_equation', 'allocated_time', 'allocated_marks', 'question_source_category', 'question_type', 'is_active', 'markdown_version', 'description'];
 // Dummy metadata taken from the sample file (editable in the UI).
 const AUTO_INPUT_DEFAULTS = {
-  class: 'Class 6', group: '', subject: 'ICT', chapter: 'test', topic: 'test',
+  class: 'Class 6', group: '', subject: '', chapter: '', topic: '',
   difficulty_level: 'Easy', allocated_time: '1', allocated_marks: '',
   question_source_category: 'Engineering', question_type: 'MCQ',
   is_active: 'true', markdown_version: '1', description: '',
 };
-const CONFIG_FIELDS = ['class', 'group', 'subject', 'chapter', 'topic', 'question_source_category', 'question_type', 'difficulty_level', 'allocated_time', 'allocated_marks', 'is_active', 'markdown_version'];
+const CONFIG_FIELDS = ['class', 'group', 'subject', 'chapter', 'question_source_category', 'question_type', 'difficulty_level', 'allocated_time', 'allocated_marks', 'is_active', 'markdown_version'];
+// Class/group/subject/chapter are driven by the CMS taxonomy snapshot (cascading
+// dropdowns); the rest stay free-text. Topic is NOT picked here — it is read
+// per-question from the uploaded doc and matched against the taxonomy per row.
+const TAXONOMY_FIELDS = ['class', 'group', 'subject', 'chapter'];
+const META_TEXT_FIELDS = CONFIG_FIELDS.filter((k) => !TAXONOMY_FIELDS.includes(k));
+
+// ---- CMS taxonomy lookups (Class → Subject → Chapter → Topic) ----
+// Built offline by tools/taxonomy-exporter.user.js against cms.shikho.com.
+const TAX_ENUMS_PRESENT = Object.keys(taxonomy.enums || {});
+// Only offer class labels we actually have data for (e.g. C6-only snapshot).
+const CLASS_OPTIONS = Object.keys(taxonomy.classLabelToEnum || {})
+  .filter((label) => TAX_ENUMS_PRESENT.includes(taxonomy.classLabelToEnum[label]));
+
+function taxGroupsFor(classLabel) {
+  const en = (taxonomy.classLabelToEnum || {})[classLabel];
+  return (taxonomy.groupsByEnum && taxonomy.groupsByEnum[en]) || [''];
+}
+function taxNeedsGroup(classLabel) {
+  const g = taxGroupsFor(classLabel);
+  return !(g.length === 1 && g[0] === '');
+}
+function taxSubjects(classLabel, group) {
+  const en = (taxonomy.classLabelToEnum || {})[classLabel];
+  const node = (taxonomy.enums || {})[en];
+  if (!node) return [];
+  const key = taxNeedsGroup(classLabel) ? (group || '') : '';
+  return (node[key] && node[key].subjects) || [];
+}
+function taxChapters(classLabel, group, subjectName) {
+  const s = taxSubjects(classLabel, group).find((x) => x.name === subjectName);
+  return s ? s.chapters : [];
+}
+function taxTopics(classLabel, group, subjectName, chapterName) {
+  const c = taxChapters(classLabel, group, subjectName).find((x) => x.name === chapterName);
+  return c ? c.topics : [];
+}
+
+// Every topic of the picked subject (across all its chapters), de-duplicated —
+// the candidate set the per-question doc topics are matched against.
+function taxAllTopics(classLabel, group, subjectName) {
+  const out = [];
+  const seen = new Set();
+  for (const c of taxChapters(classLabel, group, subjectName)) {
+    for (const t of (c.topics || [])) {
+      const key = (t.no || '') + '|' + t.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ no: String(t.no || ''), name: t.name, chapter: c.name });
+    }
+  }
+  return out;
+}
+
+const normTopic = (s) => String(s || '').toLowerCase().replace(/[।,;|()\-–—.]/g, ' ').replace(/\s+/g, ' ').trim();
+function topicTokens(s) { return new Set(normTopic(s).split(' ').filter(Boolean)); }
+function topicSim(a, b) {
+  const A = topicTokens(a), B = topicTokens(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0; for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+
+// Resolve one doc topic against the subject taxonomy:
+//   matched   → exact section-number or name hit (use the canonical CMS name)
+//   suggested → best fuzzy guess (user should confirm or repick)
+//   none      → no taxonomy for this class / no good match (keep the doc text)
+function matchTopic(docTopic, taxTopics) {
+  const docName = (docTopic && docTopic.name) || '';
+  if (!taxTopics || !taxTopics.length) return { status: 'none', name: docName };
+  if (docTopic.no) {
+    const byNo = taxTopics.find((t) => t.no === docTopic.no);
+    if (byNo) return { status: 'matched', name: byNo.name, no: byNo.no };
+  }
+  const target = normTopic(docName);
+  if (target) {
+    const exact = taxTopics.find((t) => normTopic(t.name) === target);
+    if (exact) return { status: 'matched', name: exact.name, no: exact.no };
+  }
+  let best = null, score = 0;
+  for (const t of taxTopics) { const s = topicSim(docName, t.name); if (s > score) { score = s; best = t; } }
+  if (best && score >= 0.5) return { status: 'suggested', name: best.name, no: best.no, score };
+  return { status: 'none', name: docName };
+}
+
+// Cascading Class → Group → Subject → Chapter → Topic dropdowns. Writes the
+// exact CMS names into cfg (output stays names-only) so the upload file matches
+// the live CMS taxonomy with no guessing.
+function TaxonomyPicker({ cfg, setCfg }) {
+  const needGroup = taxNeedsGroup(cfg.class);
+  const subjects = taxSubjects(cfg.class, cfg.group);
+  const chapters = taxChapters(cfg.class, cfg.group, cfg.subject);
+  const opt = (val, label) => <option key={val} value={val}>{label}</option>;
+  return (
+    <>
+      <label>class
+        <select value={CLASS_OPTIONS.includes(cfg.class) ? cfg.class : ''}
+          onChange={(e) => setCfg({ ...cfg, class: e.target.value, group: '', subject: '', chapter: '', topic: '' })}>
+          {!CLASS_OPTIONS.includes(cfg.class) && <option value="">Select class…</option>}
+          {CLASS_OPTIONS.map((c) => opt(c, c))}
+        </select>
+      </label>
+      <label>group
+        <select value={cfg.group || ''} disabled={!needGroup}
+          onChange={(e) => setCfg({ ...cfg, group: e.target.value, subject: '', chapter: '', topic: '' })}>
+          {needGroup
+            ? [<option key="" value="">Select group…</option>, ...taxGroupsFor(cfg.class).map((g) => opt(g, g))]
+            : [<option key="" value="">— not used —</option>]}
+        </select>
+      </label>
+      <label>subject
+        <select value={cfg.subject || ''}
+          onChange={(e) => setCfg({ ...cfg, subject: e.target.value, chapter: '', topic: '' })}>
+          <option value="">Select subject…</option>
+          {subjects.map((s) => opt(s.name, s.name.trim() + (s.name_bn ? '  ·  ' + s.name_bn : '')))}
+        </select>
+      </label>
+      <label>chapter
+        <select value={cfg.chapter || ''} disabled={!cfg.subject}
+          onChange={(e) => setCfg({ ...cfg, chapter: e.target.value })}>
+          <option value="">Select chapter…</option>
+          {chapters.map((c) => opt(c.name, (c.no ? c.no + '. ' : '') + c.name))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+// Per-question topic editor. Topics come from the uploaded doc (one question may
+// carry several). When the picked subject has a taxonomy, each doc topic is
+// matched to it: a green ✓ means an exact hit (canonical name auto-filled), an
+// amber ~ is a fuzzy suggestion to confirm/repick, and ✎ means free doc text
+// (no taxonomy for this class yet). Always editable; one-click accept = leave as is.
+function TopicCell({ row, taxTopics, onChange }) {
+  const docTopics = row._docTopics || [];
+  const chosen = (row._topics && row._topics.length) ? row._topics : [''];
+  const hasTax = taxTopics.length > 0;
+  const setSlot = (i, v) => { const next = chosen.slice(); next[i] = v; onChange(next); };
+  const addSlot = () => onChange([...chosen, '']);
+  const delSlot = (i) => onChange(chosen.filter((_, j) => j !== i));
+  const anySuggested = hasTax && docTopics.some((dt) => matchTopic(dt, taxTopics).status === 'suggested');
+
+  return (
+    <div className="topiccell">
+      {chosen.map((val, i) => {
+        const dt = docTopics[i] || { no: '', name: val };
+        const status = hasTax ? matchTopic(dt, taxTopics).status : 'none';
+        const badge = status === 'matched' ? 'ok' : status === 'suggested' ? 'warn' : 'doc';
+        return (
+          <div className="topicrow" key={i}>
+            <span className={'tbadge ' + badge} title={status === 'matched' ? 'matched in taxonomy' : status === 'suggested' ? 'suggested — confirm' : 'from doc'}>
+              {badge === 'ok' ? '✓' : badge === 'warn' ? '~' : '✎'}
+            </span>
+            {hasTax ? (
+              <select value={val} onChange={(e) => setSlot(i, e.target.value)}>
+                {!val && <option value="">— select topic —</option>}
+                {dt.name && !taxTopics.some((t) => t.name === dt.name) &&
+                  <option value={dt.name}>{(dt.no ? dt.no + ' ' : '') + dt.name + '  · from doc'}</option>}
+                {taxTopics.map((t) => (
+                  <option key={t.no + '|' + t.name} value={t.name}>{(t.no ? t.no + ' ' : '') + t.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input value={val} onChange={(e) => setSlot(i, e.target.value)} placeholder="topic from doc" />
+            )}
+            {chosen.length > 1 && <button type="button" className="tdel" title="remove topic" onClick={() => delSlot(i)}>×</button>}
+          </div>
+        );
+      })}
+      <button type="button" className="tadd" onClick={addSlot}>+ topic</button>
+      {anySuggested && <div className="thint">~ suggested from taxonomy — confirm or pick another</div>}
+    </div>
+  );
+}
 
 const GEN_FIELDS = ['Question Title', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Solution', 'Has Math Equation'];
 const PREVIEW_COLS = [...GEN_FIELDS, 'Difficulty Level', 'Topic(s)'];
@@ -107,7 +281,9 @@ function App() {
     let ds = null;
     try { ds = await getDataset(name); } catch { /* IndexedDB unavailable — use defaults */ }
     setCorrections(ds?.corrections || []);
-    setCfg({ ...AUTO_INPUT_DEFAULTS, subject: name, ...(ds?.cfg || {}) });
+    // cfg.subject is the CMS taxonomy subject (section 2), independent of the
+    // training/style subject selected here — so don't overwrite it.
+    setCfg({ ...AUTO_INPUT_DEFAULTS, ...(ds?.cfg || {}) });
     const ns = numberStyleFor(name);
     setStyle({ ...ns, unwrapNumbers: ds?.unwrapNumbers ?? ns.unwrapNumbers });
     setSubject(name);
@@ -168,17 +344,32 @@ function App() {
     setBusy('');
   }, []);
 
+  const subjectTaxTopics = useMemo(
+    () => taxAllTopics(cfg.class, cfg.group, cfg.subject),
+    [cfg.class, cfg.group, cfg.subject]
+  );
+
   const format = useCallback(() => {
+    const taxTopics = taxAllTopics(cfg.class, cfg.group, cfg.subject);
     const parsed = parseRaw(raw);
     const built = parsed.map((q) => {
       const base = toCmsRow(q, style);
-      const withMeta = { 'Difficulty Level': q.difficulty || '', 'Topic(s)': q.topic || '' };
+      const docTopics = (q.topics && q.topics.length) ? q.topics
+        : (q.topic ? [{ no: '', name: q.topic }] : []);
+      const resolved = docTopics.map((dt) => matchTopic(dt, taxTopics).name);
+      const withMeta = {
+        'Difficulty Level': q.difficulty || '',
+        'Topic(s)': q.topic || '',
+        _docTopics: docTopics,
+        _topics: resolved,
+      };
       return attachNearest({ ...base, ...withMeta }, corpus);
     });
     setRows(built);
-  }, [raw, style, corpus]);
+  }, [raw, style, corpus, cfg.class, cfg.group, cfg.subject]);
 
   const updateCell = (i, col, val) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [col]: val } : r)));
+  const setTopics = (i, arr) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, _topics: arr } : r)));
 
   const reformatStyle = (unwrap) => {
     setStyle((s) => ({ ...s, unwrapNumbers: unwrap }));
@@ -190,7 +381,9 @@ function App() {
     group: cfg.group,
     subject: cfg.subject,
     chapter: cfg.chapter,
-    topic: cfg.topic,
+    topic: (r._topics && r._topics.length)
+      ? r._topics.map((s) => String(s || '').trim()).filter(Boolean).join('; ')
+      : (r['Topic(s)'] || ''),
     title: r['Question Title'] || '',
     option_a: stripOptionPrefix(r['Option A']),
     option_b: stripOptionPrefix(r['Option B']),
@@ -267,9 +460,14 @@ function App() {
 
       <section className="card">
         <h2>2 · Auto-Input defaults (dummy values for the CMS upload file)</h2>
-        <p className="sub">These fill every column except the converted question/options/solution. Pre-filled from the sample file — edit as needed. <code>difficulty_level</code> here is only a fallback; the value parsed from each question wins.</p>
+        <p className="sub">Class → Subject → Chapter are picked from the live CMS taxonomy ({taxonomy.source}, {TAX_ENUMS_PRESENT.join('/') || 'none'}) so the upload file matches CMS exactly. <b>Topic is read per-question from the uploaded doc</b> and matched to the taxonomy in the preview table (step 4) — confirm or repick per row. The rest fill every column except the converted question/options/solution. <code>difficulty_level</code> here is only a fallback; the value parsed from each question wins.</p>
         <div className="grid">
-          {CONFIG_FIELDS.map((k) => (
+          {CLASS_OPTIONS.length
+            ? <TaxonomyPicker cfg={cfg} setCfg={setCfg} />
+            : TAXONOMY_FIELDS.map((k) => (
+                <label key={k}>{k}<input value={cfg[k] || ''} onChange={(e) => setCfg({ ...cfg, [k]: e.target.value })} /></label>
+              ))}
+          {META_TEXT_FIELDS.map((k) => (
             <label key={k}>{k}<input value={cfg[k] || ''} onChange={(e) => setCfg({ ...cfg, [k]: e.target.value })} /></label>
           ))}
         </div>
@@ -305,8 +503,14 @@ function App() {
                   <td className="rownum">{i + 1}</td>
                   {PREVIEW_COLS.map((c) => (
                     <td key={c}>
-                      <textarea value={r[c] || ''} onChange={(e) => updateCell(i, c, e.target.value)} />
-                      {showMath && MATH_FIELDS.includes(c) && r[c] && <MathText value={r[c]} />}
+                      {c === 'Topic(s)' ? (
+                        <TopicCell row={r} taxTopics={subjectTaxTopics} onChange={(arr) => setTopics(i, arr)} />
+                      ) : (
+                        <>
+                          <textarea value={r[c] || ''} onChange={(e) => updateCell(i, c, e.target.value)} />
+                          {showMath && MATH_FIELDS.includes(c) && r[c] && <MathText value={r[c]} />}
+                        </>
+                      )}
                     </td>
                   ))}
                   <td className="matchcell">

@@ -334,6 +334,38 @@ After training, always run `npm run build` to bundle the updated `knowledge.json
 
 ---
 
+## CMS taxonomy + per-question topic
+
+Class / Subject / Chapter are chosen from **cascading dropdowns** driven by a
+taxonomy snapshot of the live CMS (`src/taxonomy.json`). **Topic is NOT chosen
+from a dropdown** — it is read **per question from the uploaded doc** and matched
+against the taxonomy, because the same chapter's questions span many topics.
+
+**Pipeline to refresh/extend the taxonomy:**
+1. Install the userscript `tools/taxonomy-exporter.user.js` (Tampermonkey), open
+   `cms.shikho.com`, do one action so it captures your session token, then click
+   *Build & download taxonomy.json* — it walks Class→Subject→Chapter→Topic.
+2. Drop the downloaded file into `Taxonomy/` (e.g. `C6 - taxonomy.json`).
+3. `npm run taxonomy` → merges every `Taxonomy/*.json` into `src/taxonomy.json`
+   (`tools/merge-taxonomy.mjs`; later snapshots win per class enum).
+4. `npm run build`. Currently only **C6** is exported; C7+ are in progress.
+
+**Topic extraction (`parse.js`):** each question exposes `topics: [{no, name}]`
+(plus a name-only `topic` string). Multiple topics in one tag (`9.2 X, 9.5 Y`)
+are split on a comma/`;` **followed by a section number**, so commas *inside* one
+name (`রক্ত, রক্তের উপাদান, লসিকা`) stay together. The section number and any
+`Difficulty, Topic:` prefix are stripped.
+
+**Topic matching (`main.jsx` `matchTopic`):** for the picked subject, doc topics
+are resolved against `taxAllTopics()`:
+- **matched** (green ✓) — exact section-number or name hit → canonical CMS name auto-filled
+- **suggested** (amber ~) — best fuzzy guess (token Jaccard ≥ 0.5) → confirm or repick
+- **doc** (✎) — no taxonomy for that class / no good match → editable doc text
+
+The preview's Topic(s) column is a `TopicCell`: one row per topic with a status
+badge and a taxonomy `<select>` (or free-text input when no taxonomy), `+ topic`
+to add, `×` to remove. Export joins chosen topic **names** with `; `.
+
 ## Pending / next steps
 
 - User will drop more CMS export CSV files (Class 10, Class 12, Physics, Chemistry, Biology, English, etc.) into the working folder one by one. For each:

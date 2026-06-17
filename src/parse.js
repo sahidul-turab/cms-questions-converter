@@ -72,6 +72,31 @@ function isTopicTag(t) {
   return /topic/i.test(t) || /^[০-৯0-9]{1,2}\s*\.\s*[০-৯0-9]/.test(t.trim());
 }
 
+// Strip a leading difficulty word and/or a "Topic:" label from a topic tag,
+// e.g. "Medium, Topic : 4.2 পর্যায় …" -> "4.2 পর্যায় …".
+function cleanTopicText(s) {
+  return tidy(String(s || '')
+    .replace(/^\s*(easy|medium|hard)\s*[,，:：.\-]?\s*/i, '')
+    .replace(/^\s*topic[s]?\s*[:：.\-]?\s*/i, ''));
+}
+
+// A topic field can carry several topics ("9.2 X, 9.5 Y"). They are separated
+// by a comma/semicolon that is FOLLOWED by a new section number — commas inside
+// one topic name ("রক্ত, রক্তের উপাদান, লসিকা") are not.
+export function splitTopics(s) {
+  return tidy(s)
+    .split(/\s*[,;，；]\s*(?=[০-৯0-9]{1,2}\s*\.\s*[০-৯0-9])/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+// "4.1 রক্ত, রক্তের উপাদান" -> { no: "4.1", name: "রক্ত, রক্তের উপাদান" }.
+export function topicParts(t) {
+  const m = tidy(t).match(/^([০-৯0-9]{1,2}(?:\s*\.\s*[০-৯0-9]{1,2})+)\s*[-–—.]?\s*(.*)$/);
+  if (m) return { no: bnToEn(m[1]).replace(/\s+/g, ''), name: m[2].trim() };
+  return { no: '', name: tidy(t) };
+}
+
 // Strip bracketed difficulty/topic tags and a trailing EASY/MEDIUM/HARD word
 // from a stem or answer line. Returns the cleaned text plus any meta found.
 function stripInlineMeta(line) {
@@ -84,8 +109,7 @@ function stripInlineMeta(line) {
     if (isTopicTag(t)) {
       const dm = t.match(/\b(easy|medium|hard)\b/i);
       if (dm) difficulty = difficulty || normDiff(dm[1]);
-      const tm = t.match(/topic\s*[:：.\-]?\s*(.*)$/i);
-      topic = tidy(tm ? tm[1] : t.replace(/^(easy|medium|hard)\s*,?\s*/i, ''));
+      topic = cleanTopicText(t);
       return ' ';
     }
     return full; // a content/math bracket — leave it alone
@@ -118,23 +142,23 @@ function classifyMetaLine(line) {
   if (dl) return { kind: 'difficulty', difficulty: normDiff(dl[1]) };
 
   const tl = t.match(TOPIC_LINE_RE);
-  if (tl) return { kind: 'topic', topic: tidy(tl[1]), expectNext: !tl[1].trim() };
+  if (tl) return { kind: 'topic', topic: cleanTopicText(tl[1]), expectNext: !tl[1].trim() };
 
-  // Whole-line bracket: "[E]" / "[Topic: ...]" / "[5.1 ...]".
+  // Whole-line bracket: "[E]" / "[Topic: ...]" / "[5.1 ...]" / "[Medium, Topic: ...]".
   const whole = t.match(/^\[([^\]]*)\]$/);
   if (whole) {
     const inner = whole[1].trim();
     if (isDiffTag(inner)) return { kind: 'difficulty', difficulty: normDiff(inner) };
     if (isTopicTag(inner)) {
       const dm = inner.match(/\b(easy|medium|hard)\b/i);
-      return { kind: 'topic', topic: tidy(inner), difficulty: dm ? normDiff(dm[1]) : '' };
+      return { kind: 'topic', topic: cleanTopicText(inner), difficulty: dm ? normDiff(dm[1]) : '' };
     }
   }
 
   // Difficulty bracket + topic on one line: "[E]    5.3<tab>Food additives".
   const combo = t.match(/^\[(e|m|h|easy|medium|hard)\]\s*(.+)$/i);
   if (combo && isTopicTag(combo[2])) {
-    return { kind: 'topic', topic: tidy(combo[2]), difficulty: normDiff(combo[1]) };
+    return { kind: 'topic', topic: cleanTopicText(combo[2]), difficulty: normDiff(combo[1]) };
   }
 
   // Standalone section-topic line: "3.1<tab>name" (a "chapter.section" number
@@ -144,7 +168,7 @@ function classifyMetaLine(line) {
   // too, so math explanations survive.
   if (!/[=$]/.test(t) &&
       /^[০-৯0-9]{1,2}\s*\.\s*[০-৯0-9]{1,2}(\s*\.\s*[০-৯0-9]{1,2})?\s*\t/.test(t)) {
-    return { kind: 'topic', topic: tidy(t) };
+    return { kind: 'topic', topic: cleanTopicText(t) };
   }
   return null;
 }
@@ -283,13 +307,17 @@ export function parseBlock(block) {
     }
   }
 
+  // A question may carry several topics; expose them structured ({no, name})
+  // and as a name-only string (the CMS topic column wants names, not numbers).
+  const topics = splitTopics(topic).map(topicParts);
   return {
     title: tidy(title.join(' ')),
     options: { A: tidy(opt.A), B: tidy(opt.B), C: tidy(opt.C), D: tidy(opt.D) },
     correct: ansLetter && ansLetter <= 'D' ? ansLetter : '',
     answerValue: tidy(answerValue),
     explanation: tidy(exp.join(' ')),
-    topic: tidy(topic),
+    topic: topics.map((t) => t.name).join('; '),
+    topics,
     difficulty,
   };
 }
