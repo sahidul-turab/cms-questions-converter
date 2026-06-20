@@ -176,6 +176,11 @@ function resetCache(env) { caches[env] = { subjects: {}, chapters: {}, topics: {
 // ---- normalisation + class/group mapping (ported from the prod userscript) ----
 function normalize(v) {
   return String(v || '')
+    // Bengali text can arrive composed (NFC) or decomposed (NFD) — visually
+    // identical, byte-different. buildAutoRow exports NFC; the live CMS may
+    // return NFD. Normalize both sides here or exact name→id matching fails on
+    // names that look the same (e.g. "…জনসংখ্যা ও উন্নয়ন চর্চার সম্পর্ক").
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[’‘]/g, "'")
     .replace(/[–—]/g, '-')
