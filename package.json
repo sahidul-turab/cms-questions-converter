@@ -22,6 +22,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@xmldom/xmldom": "^0.9.10"
+    "@xmldom/xmldom": "^0.9.10",
+    "playwright": "^1.61.0"
   }
 }

@@ -56,6 +56,29 @@ function normDiff(s) {
 
 const tidy = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
+// A whole line that is ONLY a difficulty marker, optionally wrapped in ()/[]/{}:
+// "(medium)", "[Hard]", "Easy", "(E)". Single letters must be wrapped so a bare
+// "M" or "H" in prose is never mistaken for a difficulty.
+const DIFF_WORD_LINE_RE = /^[(\[{]?\s*(easy|medium|hard)\s*[)\]}]?$/i;
+const DIFF_LETTER_LINE_RE = /^[(\[{]\s*([emh])\s*[)\]}]$/i;
+function standaloneDifficulty(line) {
+  const t = String(line || '').trim();
+  const m = t.match(DIFF_WORD_LINE_RE) || t.match(DIFF_LETTER_LINE_RE);
+  return m ? normDiff(m[1]) : '';
+}
+
+// Strip a difficulty marker sitting at the END of a content line — but only when
+// it is wrapped in ()/[]/{} (e.g. a solution line ending "… (medium)"), so an
+// ordinary word like "hard" inside a sentence is left untouched. Returns the
+// cleaned text plus any difficulty found.
+const TRAIL_DIFF_TAG_RE = /\s*[(\[{]\s*(easy|medium|hard|[emh])\s*[)\]}]\s*$/i;
+function stripTrailingDifficulty(line) {
+  const s = String(line || '');
+  const m = s.match(TRAIL_DIFF_TAG_RE);
+  if (!m) return { text: s, difficulty: '' };
+  return { text: s.slice(0, m.index).trim(), difficulty: normDiff(m[1]) };
+}
+
 // Roman-numeral list item starters (i), ii), iii), iv)… at line start).
 const LIST_ITEM_RE = /^(?:i{1,3}|iv|vi{0,3}|ix)\s*[.)।]\s/i;
 // "নিচের কোনটি" / "নিম্নের কোনটি" stem-end lines.
@@ -144,6 +167,10 @@ function stripInlineMeta(line) {
   let difficulty = '';
   let chapter = '';
 
+  // A trailing wrapped difficulty tag, e.g. an answer line "Ans: C (Easy)".
+  const td = stripTrailingDifficulty(line);
+  if (td.difficulty) { difficulty = td.difficulty; line = td.text; }
+
   let out = replaceOutsideMath(line, /\[([^\]]*)\]/g, (full, inner) => {
     const t = inner.trim();
     if (isDiffTag(t)) { difficulty = difficulty || normDiff(t); return ' '; }
@@ -189,6 +216,10 @@ function classifyMetaLine(line) {
   // Count header: "EASY  MEDIUM  HARD", "EASY-9, MEDIUM-9, HARD-7".
   if (/^((easy|medium|hard)[\s,:\-0-9]*){2,}$/i.test(t)) return { kind: 'skip' };
 
+  // A whole line that is just a difficulty marker: "(medium)", "[H]", "Easy".
+  const sd = standaloneDifficulty(t);
+  if (sd) return { kind: 'difficulty', difficulty: sd };
+
   const dl = t.match(DIFF_LINE_RE);
   if (dl) return { kind: 'difficulty', difficulty: normDiff(dl[1]) };
 
@@ -230,10 +261,19 @@ function classifyMetaLine(line) {
   return null;
 }
 
+// A stem line in the table/tag layout ends with "[M] [4.2 …]" — a difficulty
+// bracket immediately followed by a topic bracket. In docs exported from a Word
+// table (flattened to tab-separated text) the questions carry NO leading number,
+// so this tag is the only reliable marker that a new question begins.
+const STEM_TAG_RE = /\[\s*[EMHemh]\s*\]\s*\[/;
+
 // Split a multi-question blob into per-question blocks. A new question starts
 // at a line beginning with a (Bengali or ASCII) number followed by । . or ) —
 // but NOT a "6.4"-style section number (the separator must not be followed by
 // another digit), so topic lines never start a new question.
+//
+// Fallback: when there are no leading numbers (a Word-table export), split on
+// the per-question stem tag instead, so the file does not collapse into one block.
 export function splitQuestions(text) {
   const clean = String(text || '')
     .replace(/\r/g, '')
@@ -241,18 +281,48 @@ export function splitQuestions(text) {
     .replace(/[“”]/g, '"')
     .trim();
   if (!clean) return [];
-  return clean
+  const byNumber = clean
     .split(/\n(?=\s*[০-৯0-9]{1,3}\s*[।.)](?![০-৯0-9]))/g)
     .map((b) => b.trim())
     .filter(Boolean);
+  if (byNumber.length > 1) return byNumber;
+  // Number-less, tag-based layout: start a new block at each stem-tag line.
+  const lines = clean.split('\n');
+  if (lines.filter((l) => STEM_TAG_RE.test(l)).length >= 2) {
+    const blocks = [];
+    let cur = [];
+    for (const line of lines) {
+      if (STEM_TAG_RE.test(line) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
+      cur.push(line);
+    }
+    if (cur.length) blocks.push(cur.join('\n'));
+    return blocks.map((b) => b.trim()).filter(Boolean);
+  }
+  return byNumber;
 }
 
 // Some files lay options out many-per-line, tab- or wide-space-separated:
 // "A. … \t\t B. …" or "A.1টি \tB. 2টি \tC. 3টি \tD. 4টি". Split into one per line.
 function splitInlineOptions(line) {
-  const expanded = line.replace(/(?:\t+|\s{2,})(?=[A-Eকখগঘঙ]\s*[.)]\s*\S)/g, '\n');
+  const expanded = line
+    .replace(/(?:\t+|\s{2,})(?=[A-Eকখগঘঙ]\s*[.)]\s*\S)/g, '\n')
+    // When a math span ($…$) closes and the next non-blank token is an option
+    // marker for B–E, split even on a single separating space. After a closing
+    // "$" the only valid follow-up is prose or another option — never math
+    // content — so false positives are not possible. Excludes A to avoid firing
+    // on "$expr$ A simple explanation" type prose where A opens a sentence.
+    .replace(/(\$)\s+(?=[B-Eখগঘঙ]\s*[.)]\s*\S)/g, '$1\n');
   return expanded.split('\n').map((s) => s.trim()).filter(Boolean);
 }
+
+// A stem line that carries its first option(s) inline after a wide gap, e.g.
+// "… কত?      A. 108  B. 121". The line does NOT start with an option letter,
+// so OPT_HEAD_RE misses it; without splitting, options A/B are swallowed by the
+// title and the whole question is later dropped for "missing options A/B".
+// Trigger only on an inline A./ক) marker — options always open at A, so this is
+// the reliable signal that the options block begins mid-line (and avoids firing
+// on a stray "… B. …" inside prose).
+const INLINE_OPT_START_RE = /(?:\t+|\s{2,})[Aক]\s*[.)]\s*\S/;
 
 export function parseBlock(block) {
   // Pre-expand many-per-line option rows.
@@ -260,7 +330,7 @@ export function parseBlock(block) {
   for (const l of block.split('\n')) {
     const t = l.trim();
     if (!t) continue;
-    if (OPT_HEAD_RE.test(t)) lines.push(...splitInlineOptions(t));
+    if (OPT_HEAD_RE.test(t) || INLINE_OPT_START_RE.test(t)) lines.push(...splitInlineOptions(t));
     else lines.push(t);
   }
 
@@ -304,8 +374,9 @@ export function parseBlock(block) {
 
     // Explanation line.
     if (EXP_RE.test(line)) {
-      const e = line.replace(EXP_RE, '').trim();
-      if (e) exp.push(e);
+      const d = stripTrailingDifficulty(line.replace(EXP_RE, '').trim());
+      if (d.difficulty) difficulty = difficulty || d.difficulty;
+      if (d.text) exp.push(d.text);
       mode = 'explanation';
       continue;
     }
@@ -342,9 +413,14 @@ export function parseBlock(block) {
       setMeta(m);
       if (m.text) title.push(m.text);
     } else if (mode === 'option' && curOpt) {
-      opt[curOpt] += ' ' + line;
+      // A bracketed difficulty tagged onto the last option ("D. … (medium)").
+      const d = stripTrailingDifficulty(line);
+      if (d.difficulty) difficulty = difficulty || d.difficulty;
+      opt[curOpt] += ' ' + d.text;
     } else if (mode === 'explanation') {
-      exp.push(line);
+      const d = stripTrailingDifficulty(line);
+      if (d.difficulty) difficulty = difficulty || d.difficulty;
+      if (d.text) exp.push(d.text);
     } else if (mode === 'answer') {
       const m = stripInlineMeta(line);
       setMeta(m);
